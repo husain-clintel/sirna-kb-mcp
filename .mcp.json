@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sirna-kb": {
+      "type": "http",
+      "url": "https://sirna-adme-app.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SIRNA_KB_TOKEN}"
+      }
+    }
+  }
+}
