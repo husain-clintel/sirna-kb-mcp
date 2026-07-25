@@ -1,13 +1,19 @@
 # siRNA Therapeutics Knowledge Base — MCP server
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that gives
-**your own Claude Code** semantic search over the primary literature and
-regulatory record for the FDA-approved siRNA therapeutics.
+**your own AI** semantic search over the primary literature and regulatory
+record for the approved siRNA therapeutics.
 
-> **Your Claude does the thinking.** This server is *retrieval only* — it returns
+> **Your model does the thinking.** This server is *retrieval only* — it returns
 > cited source passages from a hosted vector index. No LLM runs on our side; your
-> Claude Code (or any MCP client) reasons over what it gets back. Our API keys are
-> never used by you, and yours are never seen by us.
+> Claude, ChatGPT or other MCP client reasons over what it gets back. Our API keys
+> are never used by you, and yours are never seen by us.
+
+**No account, no key, no sign-in.** Paste the URL and connect:
+
+```
+https://sirna-atlas.pkpdbuilder.com/api/mcp
+```
 
 ## What's in the corpus
 
@@ -24,7 +30,7 @@ pivotal & secondary trial publications · foundational siRNA/GalNAc **ADME, PK/P
 | vutrisiran | Amvuttra | hATTR polyneuropathy; ATTR-CM |
 | nedosiran | Rivfloza | Primary hyperoxaluria type 1 |
 | fitusiran | Qfitlia | Hemophilia A/B |
-| plozasiran | — | Familial chylomicronemia syndrome |
+| plozasiran | Redemplo (EU) | Familial chylomicronemia syndrome |
 
 Tables in the FDA/EMA PDFs (PK parameters, efficacy endpoints, tox summaries)
 were OCR-recovered and preserved as Markdown, so **numeric table values are
@@ -39,75 +45,104 @@ searchable** — not just the surrounding prose.
 | `get_citations` | Chunk ids → APA-formatted references (journal articles resolve fully; FDA/EMA reviews resolve to the agency document). |
 | `fetch_document_section` | Widen a hit to its full page/section (e.g. a whole table) when a snippet is cut off. |
 
-## Enable it in Claude Code
+## Connect
 
-You need an **access token** — [request one](#getting-a-token) (the corpus data is
-public, but access to the hosted index is gated to control cost/abuse).
+### Claude Desktop · claude.ai
 
-### Option A — one command (quickest)
+Settings → Connectors → **Add custom connector**, paste the URL above. Nothing
+else to fill in.
+
+### Claude Code
 
 ```bash
-claude mcp add --transport http --scope user sirna-kb \
-  https://sirna-adme-app.vercel.app/api/mcp \
-  --header "Authorization: Bearer YOUR_TOKEN"
+claude mcp add --transport http --scope user sirna-kb https://sirna-atlas.pkpdbuilder.com/api/mcp
 ```
 
 `--scope user` makes it available in every project. Drop it to add only to the
-current project.
+current project. Verify with `/mcp` inside Claude Code, or `claude mcp list`.
 
-### Option B — clone this repo (project-scoped, sharable)
+### Any other MCP client
 
-This repo ships a [`.mcp.json`](./.mcp.json). Clone it (or copy that file into your
-project), set your token as an env var, and open the folder in Claude Code — it
-detects the config and prompts you to approve the server.
+This repo ships a [`.mcp.json`](./.mcp.json) — clone it, or copy the file into
+your project:
 
-```bash
-git clone https://github.com/husain-clintel/sirna-kb-mcp.git
-cd sirna-kb-mcp
-export SIRNA_KB_TOKEN="YOUR_TOKEN"   # Claude Code expands ${SIRNA_KB_TOKEN}
-claude                                # approve "sirna-kb" when prompted
+```json
+{
+  "mcpServers": {
+    "sirna-kb": {
+      "type": "http",
+      "url": "https://sirna-atlas.pkpdbuilder.com/api/mcp"
+    }
+  }
+}
 ```
-
-Verify with `/mcp` inside Claude Code, or `claude mcp list`.
 
 ### Try it
 
 > "Using sirna-kb, what was the mean baseline mNIS+7 for the vutrisiran group in
 > HELIOS-A, and cite the source?"
 
-Claude will call `search_corpus`, then `get_citations`, and answer with the value
-and an APA reference.
+Your model will call `search_corpus`, then `get_citations`, and answer with the
+value and an APA reference.
+
+## Prompting your agent
+
+Paste this into the system prompt, project instructions or `CLAUDE.md` of
+whatever you connected — it fixes the call order and carries the two rules this
+corpus has been burned by:
+
+```
+You have access to the "sirna-kb" MCP server: a retrieval-only knowledge base
+covering the eight approved siRNA therapeutics. Call corpus_info once to scope
+what is answerable. For any factual question about these drugs — mechanism,
+ADME, PK/PD, dosing, efficacy, safety, nonclinical toxicology, regulatory
+history — search the corpus before answering from your own knowledge, passing
+the "drugs" filter when the question names specific drugs. When a snippet is
+truncated or part of a table, call fetch_document_section before quoting numbers
+from it. Call get_citations for the ids you used and cite them.
+
+- A source about one drug is evidence about that drug only. Never attribute a
+  study ID, dose level, NOAEL or finding from one siRNA to another.
+- Tables from regulatory PDFs may arrive as flattened text. If you cannot tell
+  which value belongs to which dose, species or arm, say so rather than guessing.
+- If a search returns nothing for a drug, say the search found nothing — not that
+  the data does not exist.
+- Antisense oligonucleotides are out of scope; this corpus is siRNA only.
+```
+
+## Fair use
+
+Open access is bounded by usage limits rather than credentials: a burst limit per
+client, a monthly search allowance per IP, and a ceiling for the server as a
+whole. Heavy or automated use can be issued a token (sent as an `Authorization:
+Bearer` header, or `?k=` in the URL) for a much larger allowance — contact the
+repo owner. Everyone else needs nothing.
 
 ## Security
 
-- **Transport:** HTTPS only. Your token rides in the `Authorization` header.
-- **Your token is a secret.** Don't commit it. The committed `.mcp.json` reads it
-  from the `${SIRNA_KB_TOKEN}` environment variable — never hard-code it there.
-- **Revocable:** each token is issued per user and can be revoked server-side
-  without affecting anyone else.
-- **Rate-limited** per token.
-- **Read-only:** the server only searches and reads; there are no write/delete tools.
+- **Transport:** HTTPS only.
+- **Read-only:** the server only searches and reads; there are no write or delete tools.
 - **No LLM calls server-side:** this server never invokes Claude or any model — it
   only queries a vector index and returns text.
-
-## Getting a token
-
-Contact the maintainer (see repo owner) to be issued a token. Tokens are minted
-with `scripts/mint-mcp-token.ts` in the server project; only the hash is stored
-server-side.
+- **Nothing secret is exposed:** the corpus is public FDA, EMA and PubMed material.
+  Access is open because there is nothing here to protect — the limits exist to
+  bound hosting cost, not to restrict the content.
 
 ## How it works
 
 ```
-Your Claude Code ──HTTPS+Bearer──▶ /api/mcp (Vercel)
-                                      │  search_corpus / get_citations / …
-                                      ▼
-                              Pinecone vector index
-                        (llama-text-embed-v2, integrated inference)
+Your MCP client ────HTTPS────▶ /api/mcp (Vercel)
+                                  │  search_corpus / get_citations / …
+                                  ▼
+                          Pinecone vector index
+                    (llama-text-embed-v2, integrated inference)
 ```
 
-Source passages come back to your Claude, which composes the answer. The corpus is
-public FDA/EMA/PubMed material; the token gates access to the hosted index only.
+Source passages come back to your model, which composes the answer.
+
+There is also a hosted chat UI over the same corpus at
+**[sirna-atlas.pkpdbuilder.com](https://sirna-atlas.pkpdbuilder.com)** — answers
+with inline citations and an APA reference list.
 
 ## License
 
